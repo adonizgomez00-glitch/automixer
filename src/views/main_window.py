@@ -151,19 +151,31 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
 
     def _on_volume_changed(self, value: int) -> None:
         self._volume_db_label.setText(f"{value} dB")
-        target = self._get_target_lufs()
-        approx_lufs = round(target + value, 1)
-        self._lufs_value_label.setText(f"{approx_lufs:.1f} LUFS")
 
-    def _get_target_lufs(self) -> float:
+    def _update_normalization_display(self) -> None:
+        norm = self._get_normalization()
+        if norm:
+            self._lufs_value_label.setText(f"{norm[0]:.1f} LUFS")
+            self._truepeak_value_label.setText(f"{norm[1]:.1f} dB")
+        else:
+            self._lufs_value_label.setText("—")
+            self._truepeak_value_label.setText("—")
+
+    def _get_normalization(self) -> tuple[float, float] | None:
         ps = self._project_service()
         if ps is None or ps.active_project is None:
-            return -14.0
+            return None
         profile_svc = self._services.get("profile_service")
         if profile_svc is None:
-            return -14.0
+            return None
         norm = profile_svc.normalization(ps.active_project.genre)
-        return norm.lufs if norm else -14.0
+        if norm is None:
+            return None
+        return (norm.lufs, norm.true_peak_db)
+
+    def _get_target_lufs(self) -> float:
+        norm = self._get_normalization()
+        return norm[0] if norm else -14.0
 
     def _build_progress_bar(self) -> None:
         self._progress_bar = self._qw.QProgressBar()
@@ -258,7 +270,9 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         if genre is None:
             return
         res = ps.change_genre(genre)
-        if not res.is_ok:
+        if res.is_ok:
+            self._update_normalization_display()
+        else:
             qw.QMessageBox.warning(
                 self, self._tr("ui.preferences"),
                 self._tr("project.not_open")
@@ -368,7 +382,6 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
     # --- gestión de stems (U3) ---
 
     def _on_stem_item_clicked(self, item) -> None:
-        # Buscar el stem_id a partir del QListWidgetItem
         stem_id = None
         for sid, lst_item in self._stem_items.items():
             if lst_item is item:
@@ -383,12 +396,25 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         stem = ps.active_project.find_stem(stem_id)
         if stem is None:
             return
-        qw.QMessageBox.information(
-            self, self._tr("ui.stem_file"),
-            f"{self._tr('ui.stem_file')}: {stem.path}\n"
-            f"{self._tr('ui.stem_type')}: {stem.type.value}\n"
-            f"{self._tr('ui.stem_volume')}: {stem.gain_db:.1f} dB",
+        types = list(self._qw.QMetaEnum.enumerate(
+            type(stem.type)
+        )) if hasattr(self._qw.QMetaEnum, 'enumerate') else []
+        from ..models.project import StemType
+        all_types = list(StemType)
+        type_labels = [self._tr(f"stem.type.{t.value}") for t in all_types]
+        item_text, ok = qw.QInputDialog.getItem(
+            self,
+            self._tr("stem.change_type"),
+            f"{stem.path}\n{self._tr('ui.stem_type')}:",
+            type_labels,
+            type_labels.index(self._tr(f"stem.type.{stem.type.value}")) if self._tr(f"stem.type.{stem.type.value}") in type_labels else 0,
+            False,
         )
+        if ok and item_text:
+            idx = type_labels.index(item_text)
+            new_type = all_types[idx]
+            ps.set_stem_type(stem_id, new_type)
+            self._refresh_stems_list()
 
     def _import_stems(self) -> None:
         """Importar stems mediante diálogo de archivo (evita crashs de Qt con drag & drop)."""
@@ -412,11 +438,15 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
                 self._tr("project.not_open")
             )
             return
+        from ..utils.validators import detect_stem_type
+        from ..models.project import StemType
         added = 0
         for path in paths:
             if not self._is_audio_file(path):
                 continue
-            res = ps.add_stem(path)
+            type_str = detect_stem_type(os.path.basename(path))
+            stype = StemType(type_str)
+            res = ps.add_stem(path, stype=stype)
             if res.is_ok:
                 stem = res.value
                 self._add_stem_item(stem)
@@ -431,9 +461,10 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
     def _add_stem_item(self, stem) -> None:
         qw = self._qw
         item = qw.QListWidgetItem()
-        item.setText(stem.path)
+        name = os.path.basename(stem.path)
+        type_label = self._tr(f"stem.type.{stem.type.value}")
+        item.setText(f"[{type_label}] {name}")
         self._stems_list.addItem(item)
-        # Usar el ID del stem como clave (los QListWidgetItem no son hashables en PySide6)
         self._stem_items[stem.id] = item
 
     def _refresh_stems_list(self) -> None:
@@ -599,6 +630,7 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         self._volume_label.setText(t("ui.volume") + ":")
         self._lufs_label.setText(t("ui.lufs") + ":")
         self._truepeak_label.setText(t("ui.true_peak") + ":")
+        self._update_normalization_display()
         self._on_volume_changed(self._volume_slider.value())
 
     def _open_preferences(self) -> None:

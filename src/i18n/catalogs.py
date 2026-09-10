@@ -56,6 +56,16 @@ ES = {
     "ui.genre_hip_hop": "Hip Hop",
     "ui.lufs": "LUFS",
     "ui.true_peak": "True Peak",
+    "stem.type.voz": "Voz",
+    "stem.type.bateria": "Batería",
+    "stem.type.bajo": "Bajo",
+    "stem.type.guitarra": "Guitarra",
+    "stem.type.teclados": "Teclados",
+    "stem.type.sintetizadores": "Sintetizadores",
+    "stem.type.drops": "Drops",
+    "stem.type.efectos": "Efectos",
+    "stem.type.otro": "Otro",
+    "stem.change_type": "Cambiar tipo de stem:",
 }
 
 EN = {
@@ -111,6 +121,16 @@ EN = {
     "ui.genre_hip_hop": "Hip Hop",
     "ui.lufs": "LUFS",
     "ui.true_peak": "True Peak",
+    "stem.type.voz": "Vocals",
+    "stem.type.bateria": "Drums",
+    "stem.type.bajo": "Bass",
+    "stem.type.guitarra": "Guitar",
+    "stem.type.teclados": "Keys",
+    "stem.type.sintetizadores": "Synths",
+    "stem.type.drops": "Drops",
+    "stem.type.efectos": "Effects",
+    "stem.type.otro": "Other",
+    "stem.change_type": "Change stem type:",
 }
 
 _CATALOGS = {"es": ES, "en": EN}
