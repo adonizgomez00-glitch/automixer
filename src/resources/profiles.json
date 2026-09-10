@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "normalization": {
+    "pop":     {"lufs": -14.0, "true_peak": -1.0},
+    "rock":    {"lufs": -12.0, "true_peak": -1.0},
+    "hip_hop": {"lufs": -13.0, "true_peak": -1.0}
+  },
+  "profiles": {
+    "pop": {
+      "voz":          {"gain_base": 0.0, "pan": 0.0, "hpf": 100, "eq": [{"gain": -1.5, "freq": 400}, {"gain": 2.0, "freq": 3000}], "compressor": {"threshold": -16, "ratio": 3, "attack_ms": 15, "release_ms": 150}, "makeup_gain": 0.0},
+      "bateria":      {"gain_base": 0.0, "pan": 0.0, "hpf": 25,  "eq": [{"gain": 1.5, "freq": 5000}], "compressor": {"threshold": -18, "ratio": 3, "attack_ms": 10, "release_ms": 100}, "makeup_gain": 0.0},
+      "bajo":         {"gain_base": 0.0, "pan": 0.0, "hpf": 30,  "eq": [{"gain": 1.0, "freq": 120}], "compressor": {"threshold": -20, "ratio": 4, "attack_ms": 20, "release_ms": 120}, "makeup_gain": 0.0},
+      "guitarra":     {"gain_base": 0.0, "pan": 0.15, "hpf": 90, "eq": [{"gain": -1.0, "freq": 400}, {"gain": 2.0, "freq": 2500}], "compressor": {"threshold": -18, "ratio": 2.5, "attack_ms": 10, "release_ms": 100}, "makeup_gain": 0.0},
+      "teclados":     {"gain_base": 0.0, "pan": 0.20, "hpf": 80, "eq": [{"gain": -1.5, "freq": 800}], "compressor": null, "makeup_gain": 0.0},
+      "sintetizadores":{"gain_base": 0.0, "pan": 0.10, "hpf": 60, "eq": [{"gain": 1.0, "freq": 3500}], "compressor": null, "makeup_gain": 0.0},
+      "drops":        {"gain_base": 0.0, "pan": 0.0, "hpf": 30, "eq": [{"gain": 1.0, "freq": 100}], "compressor": null, "makeup_gain": 0.0},
+      "efectos":      {"gain_base": -6.0, "pan": 0.30, "hpf": 100, "eq": [{"gain": -2.0, "freq": 1000}], "compressor": null, "makeup_gain": 0.0},
+      "otro":         {"gain_base": 0.0, "pan": 0.0, "hpf": null, "eq": [], "compressor": null, "makeup_gain": 0.0}
+    },
+    "rock": {
+      "voz":          {"gain_base": 0.0, "pan": 0.0, "hpf": 110, "eq": [{"gain": -1.0, "freq": 500}, {"gain": 1.5, "freq": 2500}], "compressor": null, "makeup_gain": 0.0},
+      "bateria":      {"gain_base": 1.0, "pan": 0.0, "hpf": 25, "eq": [{"gain": 2.0, "freq": 4000}], "compressor": {"threshold": -18, "ratio": 3, "attack_ms": 10, "release_ms": 100}, "makeup_gain": 0.0},
+      "bajo":         {"gain_base": 0.0, "pan": 0.0, "hpf": 30, "eq": [{"gain": 2.0, "freq": 100}], "compressor": {"threshold": -20, "ratio": 4, "attack_ms": 20, "release_ms": 120}, "makeup_gain": 1.0},
+      "guitarra":     {"gain_base": 1.0, "pan": 0.25, "hpf": 90, "eq": [{"gain": -1.5, "freq": 600}, {"gain": 2.5, "freq": 2000}], "compressor": {"threshold": -18, "ratio": 2.5, "attack_ms": 10, "release_ms": 100}, "makeup_gain": 0.0},
+      "teclados":     {"gain_base": -3.5, "pan": 0.20, "hpf": 80, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "sintetizadores":{"gain_base": -3.0, "pan": 0.15, "hpf": 60, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "drops":        {"gain_base": -1.5, "pan": 0.0, "hpf": 30, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "efectos":      {"gain_base": -7.0, "pan": 0.35, "hpf": 100, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "otro":         {"gain_base": 0.0, "pan": 0.0, "hpf": null, "eq": [], "compressor": null, "makeup_gain": 0.0}
+    },
+    "hip_hop": {
+      "voz":          {"gain_base": 0.0, "pan": 0.0, "hpf": 90, "eq": [{"gain": -2.0, "freq": 250}, {"gain": 2.0, "freq": 3000}], "compressor": {"threshold": -16, "ratio": 3, "attack_ms": 15, "release_ms": 150}, "makeup_gain": 0.0},
+      "bateria":      {"gain_base": 1.5, "pan": 0.0, "hpf": 25, "eq": [{"gain": 3.0, "freq": 60}], "compressor": {"threshold": -18, "ratio": 4, "attack_ms": 10, "release_ms": 100}, "makeup_gain": 0.0},
+      "bajo":         {"gain_base": 2.0, "pan": 0.0, "hpf": 28, "eq": [{"gain": 2.5, "freq": 60}], "compressor": {"threshold": -20, "ratio": 4, "attack_ms": 20, "release_ms": 120}, "makeup_gain": 0.0},
+      "guitarra":     {"gain_base": -2.5, "pan": 0.20, "hpf": 90, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "teclados":     {"gain_base": -4.0, "pan": 0.25, "hpf": 80, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "sintetizadores":{"gain_base": -3.0, "pan": 0.15, "hpf": 60, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "drops":        {"gain_base": 1.0, "pan": 0.0, "hpf": 30, "eq": [{"gain": 2.0, "freq": 55}], "compressor": null, "makeup_gain": 0.0},
+      "efectos":      {"gain_base": -7.0, "pan": 0.35, "hpf": 100, "eq": [], "compressor": null, "makeup_gain": 0.0},
+      "otro":         {"gain_base": 0.0, "pan": 0.0, "hpf": null, "eq": [], "compressor": null, "makeup_gain": 0.0}
+    }
+  }
+}

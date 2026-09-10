@@ -1,0 +1,464 @@
+from __future__ import annotations
+
+"""Ventana principal (UI): 3 zonas según decisión U1 + selector de idioma (U8).
+
+El import de PySide6 es perezoso para permitir probar el núcleo sin entorno
+gráfico. `MainWindow` hereda de `QMainWindow` y, cuando se le pasa
+`services["i18n_service"]`, traduce las etiquetas y habilita el diálogo de
+Preferencias (SPEC010 AC-05).
+"""
+
+import os
+import typing
+
+try:
+    from PySide6 import QtWidgets as _qw
+except Exception:  # noqa: BLE001 - PySide6 opcional durante headless/tests
+    _qw = None
+
+if typing.TYPE_CHECKING:
+    from PySide6 import QtWidgets as Qw  # noqa: F401
+
+
+def build_main_window(services: dict | None = None):
+    """Construye la `MainWindow` si PySide6 está disponible."""
+    if _qw is None:
+        raise RuntimeError("PySide6 no está instalado; no se puede construir la UI.")
+    return MainWindow(_qw, services)
+
+
+class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
+    """Ventana principal de 3 zonas (U1) con idioma configurable (U8)."""
+
+    def __init__(self, QtWidgets, services: dict | None) -> None:
+        super().__init__()
+        self._qw = QtWidgets
+        self._services = services or {}
+        self._btn_labels: dict = {}
+        self._stem_items: dict = {}  # map: QListWidgetItem -> stem_id
+
+        central = QtWidgets.QWidget()
+        self._layout = QtWidgets.QVBoxLayout(central)
+        self._build_top_bar()
+        self._build_stems_area()
+        self._build_playback_bar()
+        self.setCentralWidget(central)
+        self._apply_language()
+
+    # --- construcción de zonas ---
+
+    def _add_button(self, text: str, *, with_save: bool = False):
+        btn = self._qw.QPushButton(text)
+        self._btn_labels[btn] = text
+        if with_save:
+            btn.clicked.connect(self._open_preferences)
+        return btn
+
+    def _build_top_bar(self) -> None:
+        ql = self._layout
+        top = self._qw.QWidget()
+        top_layout = self._qw.QHBoxLayout(top)
+        self._name_label = self._qw.QLabel("")
+        top_layout.addWidget(self._name_label)
+
+        btn_new = self._add_button("")
+        btn_new.clicked.connect(self._new_project)
+        top_layout.addWidget(btn_new)
+
+        btn_open = self._add_button("")
+        btn_open.clicked.connect(self._open_project)
+        top_layout.addWidget(btn_open)
+
+        btn_save = self._add_button("")
+        btn_save.clicked.connect(self._save_project)
+        top_layout.addWidget(btn_save)
+
+        top_layout.addStretch()
+
+        btn_prefs = self._add_button("", with_save=True)
+        top_layout.addWidget(btn_prefs)
+
+        ql.addWidget(top)
+
+    def _build_stems_area(self) -> None:
+        ql = self._layout
+        stems = self._qw.QWidget()
+        stems_layout = self._qw.QVBoxLayout(stems)
+        self._hint = self._qw.QLabel("")
+        stems_layout.addWidget(self._hint)
+
+        self._stems_list = self._qw.QListWidget()
+        stems_layout.addWidget(self._stems_list)
+
+        # Botón para importar stems (diálogo de archivo, evita crashs de Qt con drag & drop)
+        btn_import = self._qw.QPushButton(self._tr("ui.import_hint"))
+        btn_import.clicked.connect(self._import_stems)
+        stems_layout.addWidget(btn_import)
+
+        ql.addWidget(stems, 1)
+
+    def _build_playback_bar(self) -> None:
+        ql = self._layout
+        bottom = self._qw.QWidget()
+        bottom_layout = self._qw.QHBoxLayout(bottom)
+        self._mix_btn = self._add_button("")
+        self._mix_btn.clicked.connect(self._on_mix)
+        bottom_layout.addWidget(self._mix_btn)
+        self._position = self._qw.QLabel("")
+        bottom_layout.addWidget(self._position)
+        bottom_layout.addWidget(self._qw.QSlider())
+        bottom_layout.addStretch()
+        self._export_btn = self._add_button("")
+        self._export_btn.clicked.connect(self._on_export)
+        bottom_layout.addWidget(self._export_btn)
+        ql.addWidget(bottom)
+
+    # --- helpers ---
+
+    def _project_service(self):
+        return self._services.get("project_service")
+
+    def _mix_service(self):
+        return self._services.get("mix_service")
+
+    def _update_project_name(self) -> None:
+        ps = self._project_service()
+        if ps is None:
+            self._name_label.setText(self._tr("ui.project_name"))
+            return
+        proj = ps.active_project
+        if proj is None:
+            self._name_label.setText(self._tr("ui.project_name"))
+        else:
+            self._name_label.setText(
+                f"{self._tr('ui.project_name')}: {proj.name}"
+            )
+
+    def _enable_playback_controls(self, enabled: bool) -> None:
+        self._mix_btn.setEnabled(enabled)
+        self._export_btn.setEnabled(enabled)
+
+    @staticmethod
+    def _is_audio_file(path: str) -> bool:
+        ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        return ext in ("mp3", "flac", "wav")
+
+    # --- handlers de botones ---
+
+    def _new_project(self) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None:
+            return
+
+        dlg = qw.QDialog(self)
+        dlg.setWindowTitle(self._tr("ui.new_project"))
+        lay = qw.QFormLayout(dlg)
+
+        name_input = qw.QLineEdit()
+        lay.addRow(self._tr("ui.project_name") + ":", name_input)
+
+        folder_combo = qw.QComboBox()
+        lay.addRow(self._tr("ui.folder") + ":", folder_combo)
+
+        active_path = ps.active_path
+        if active_path:
+            folder_combo.addItem(os.path.dirname(active_path))
+        folder_combo.addItem(os.path.expanduser("~"))
+        folder_combo.addItem(os.getcwd())
+
+        btn_box = qw.QDialogButtonBox(
+            qw.QDialogButtonBox.StandardButton.Ok
+            | qw.QDialogButtonBox.StandardButton.Cancel
+        )
+        lay.addRow(btn_box)
+
+        def on_ok():
+            name = name_input.text().strip()
+            if not name:
+                qw.QMessageBox.warning(
+                    dlg, self._tr("ui.preferences"),
+                    self._tr("project.name_empty")
+                )
+                return
+            folder = str(folder_combo.currentText())
+            if not folder:
+                folder = os.getcwd()
+            res = ps.create(name, folder)
+            if res.is_ok:
+                self._update_project_name()
+                self._refresh_stems_list()
+                self._enable_playback_controls(ps.mix_enabled)
+                dlg.accept()
+            else:
+                msg = getattr(
+                    getattr(res, "error", None), "message", str(res)
+                )
+                qw.QMessageBox.warning(dlg, self._tr("ui.preferences"), msg)
+
+        btn_box.accepted.connect(on_ok)
+        btn_box.rejected.connect(dlg.reject)
+        dlg.exec()
+
+    def _open_project(self) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None:
+            return
+        path, _ = qw.QFileDialog.getOpenFileName(
+            self, self._tr("ui.open"), "", "Proyectos (*.automixer)"
+        )
+        if not path:
+            return
+        res = ps.open(path)
+        if res.is_ok:
+            self._update_project_name()
+            self._refresh_stems_list()
+            self._enable_playback_controls(ps.mix_enabled)
+        else:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.load_failed")
+            )
+
+    def _save_project(self) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None:
+            return
+        res = ps.save()
+        if not res.is_ok:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.save_failed")
+            )
+
+    # --- gestión de stems (U3) ---
+
+    def _on_stem_item_clicked(self, item) -> None:
+        # Buscar el stem_id a partir del QListWidgetItem
+        stem_id = None
+        for sid, lst_item in self._stem_items.items():
+            if lst_item is item:
+                stem_id = sid
+                break
+        if stem_id is None:
+            return
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            return
+        stem = ps.active_project.find_stem(stem_id)
+        if stem is None:
+            return
+        qw.QMessageBox.information(
+            self, self._tr("ui.stem_file"),
+            f"{self._tr('ui.stem_file')}: {stem.path}\n"
+            f"{self._tr('ui.stem_type')}: {stem.type.value}\n"
+            f"{self._tr('ui.stem_volume')}: {stem.gain_db:.1f} dB",
+        )
+
+    def _import_stems(self) -> None:
+        """Importar stems mediante diálogo de archivo (evita crashs de Qt con drag & drop)."""
+        qw = self._qw
+        paths, _ = qw.QFileDialog.getOpenFileNames(
+            self,
+            self._tr("ui.import_hint"),
+            "",
+            "Audio (*.mp3 *.flac *.wav)",
+        )
+        if not paths:
+            return
+        self._add_stems_from_paths(paths)
+
+    def _add_stems_from_paths(self, paths: list) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.not_open")
+            )
+            return
+        added = 0
+        for path in paths:
+            if not self._is_audio_file(path):
+                continue
+            res = ps.add_stem(path)
+            if res.is_ok:
+                stem = res.value
+                self._add_stem_item(stem)
+                added += 1
+        if added:
+            self._enable_playback_controls(ps.mix_enabled)
+            suffix = "" if added == 1 else "s"
+            self._hint.setText(
+                f"{self._tr('ui.import_hint')}  ({added} añadido{suffix})"
+            )
+
+    def _add_stem_item(self, stem) -> None:
+        qw = self._qw
+        item = qw.QListWidgetItem()
+        item.setText(stem.path)
+        self._stems_list.addItem(item)
+        # Usar el ID del stem como clave (los QListWidgetItem no son hashables en PySide6)
+        self._stem_items[stem.id] = item
+
+    def _refresh_stems_list(self) -> None:
+        self._stems_list.clear()
+        self._stem_items.clear()
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            return
+        for stem in ps.active_project.stems:
+            self._add_stem_item(stem)
+
+    # --- handlers de reproducción (SPEC005/SPEC006/SPEC007) ---
+
+    def _on_mix(self) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        ms = self._mix_service()
+        if ps is None or ms is None:
+            return
+        if ps.active_project is None:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.not_open")
+            )
+            return
+        if not ps.mix_enabled:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("ui.import_hint")
+            )
+            return
+        res = ms.render_preview(ps.active_project)
+        if res.is_ok:
+            load_res = ms.load_preview()
+            if load_res.is_ok:
+                self._position.setText("0:00")
+            else:
+                qw.QMessageBox.warning(
+                    self, self._tr("ui.preferences"),
+                    self._tr("job.failed")
+                )
+        else:
+            msg = getattr(
+                getattr(res, "error", None), "message", str(res)
+            )
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                msg or self._tr("job.failed")
+            )
+
+    def _on_export(self) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        ms = self._mix_service()
+        if ps is None or ms is None:
+            return
+        if ps.active_project is None:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.not_open")
+            )
+            return
+        if not ps.mix_enabled:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("ui.import_hint")
+            )
+            return
+
+        name = ps.active_project.name
+        base_name = (name or "mezcla").replace(" ", "_")
+        filters = "WAV 44.1 kHz / 24-bit (*.wav);;MP3 320 kbps (*.mp3)"
+        path, selected_filter = qw.QFileDialog.getSaveFileName(
+            self, self._tr("ui.export"), f"{base_name}.wav", filters
+        )
+        if not path:
+            return
+        fmt = "wav" if "*.wav" in (selected_filter or "") else "mp3"
+        from ..ports.audio import ExportFormat
+        export_fmt = (
+            ExportFormat.WAV if fmt == "wav" else ExportFormat.MP3
+        )
+        res = ms.export(ps.active_project, path, export_fmt)
+        if not res.is_ok:
+            msg = getattr(
+                getattr(res, "error", None), "message", str(res)
+            )
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                msg or self._tr("export.failed")
+            )
+
+    # --- idioma (SPEC010 AC-05, U8) ---
+
+    def _tr(self, code: str) -> str:
+        i18n = self._services.get("i18n_service")
+        return i18n.tr(code) if i18n is not None else code
+
+    def _apply_language(self) -> None:
+        t = self._tr
+        self.setWindowTitle(t("app.title"))
+        buttons = list(self._btn_labels)
+        self._name_label.setText(t("ui.project_name"))
+        labels = [t("ui.new_project"), t("ui.open"), t("ui.save")]
+        for i, btn in enumerate(buttons[:3]):
+            btn.setText(labels[i])
+        buttons[3].setText(t("ui.preferences"))
+        self._hint.setText(t("ui.import_hint"))
+        self._mix_btn.setText(t("ui.mix"))
+        self._position.setText("0:00")
+        self._export_btn.setText(t("ui.export"))
+
+    def _open_preferences(self) -> None:
+        """Diálogo Preferencias (U8): selector de idioma que persiste (AC-05).
+
+        Usa `QDialog` con botones personalizados para garantizar que el
+        diálogo se cierre correctamente tras aplicar el idioma.
+        """
+        qw = self._qw
+        i18n = self._services.get("i18n_service")
+        if i18n is None:
+            return
+
+        dlg = qw.QDialog(self)
+        dlg.setWindowTitle(self._tr("ui.preferences"))
+        dlg.setModal(True)
+        lay = qw.QVBoxLayout(dlg)
+
+        lang_label = qw.QLabel(self._tr("ui.language") + ":")
+        lay.addWidget(lang_label)
+
+        lang_box = qw.QComboBox()
+        lang_box.addItem(self._tr("ui.spanish"), "es")
+        lang_box.addItem(self._tr("ui.english"), "en")
+        idx = lang_box.findData(i18n.language)
+        if idx >= 0:
+            lang_box.setCurrentIndex(idx)
+        lay.addWidget(lang_box)
+
+        # Botones personalizados para mayor control
+        btn_ok = qw.QPushButton(self._tr("ui.ok"))
+        btn_cancel = qw.QPushButton(self._tr("ui.cancel"))
+        lay.addWidget(btn_ok)
+        lay.addWidget(btn_cancel)
+
+        def on_ok_clicked():
+            res = i18n.set_language(str(lang_box.currentData()))
+            if res.is_ok:
+                self._apply_language()
+                self._update_project_name()
+                dlg.accept()
+            else:
+                qw.QMessageBox.warning(
+                    dlg, self._tr("ui.preferences"),
+                    self._tr("i18n.unsupported_language")
+                )
+
+        btn_ok.clicked.connect(on_ok_clicked)
+        btn_cancel.clicked.connect(dlg.reject)
+        dlg.exec()
