@@ -118,7 +118,6 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         bottom_layout.addWidget(self._mix_btn)
         self._position = self._qw.QLabel("")
         bottom_layout.addWidget(self._position)
-        bottom_layout.addWidget(self._qw.QSlider())
         bottom_layout.addStretch()
 
         self._volume_label = self._qw.QLabel("")
