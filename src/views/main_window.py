@@ -426,7 +426,7 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         fmt = "wav" if "*.wav" in (selected_filter or "") else "mp3"
         from ..ports.audio import ExportFormat
         export_fmt = (
-            ExportFormat.WAV if fmt == "wav" else ExportFormat.MP3
+            ExportFormat.WAV_44100_24 if fmt == "wav" else ExportFormat.MP3_320
         )
         res = ms.export(ps.active_project, path, export_fmt)
         if not res.is_ok:
