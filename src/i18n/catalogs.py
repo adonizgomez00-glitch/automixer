@@ -54,6 +54,8 @@ ES = {
     "ui.genre_pop": "Pop",
     "ui.genre_rock": "Rock",
     "ui.genre_hip_hop": "Hip Hop",
+    "ui.lufs": "LUFS",
+    "ui.true_peak": "True Peak",
 }
 
 EN = {
@@ -107,6 +109,8 @@ EN = {
     "ui.genre_pop": "Pop",
     "ui.genre_rock": "Rock",
     "ui.genre_hip_hop": "Hip Hop",
+    "ui.lufs": "LUFS",
+    "ui.true_peak": "True Peak",
 }
 
 _CATALOGS = {"es": ES, "en": EN}

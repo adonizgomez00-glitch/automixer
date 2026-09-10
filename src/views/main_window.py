@@ -13,8 +13,10 @@ import typing
 
 try:
     from PySide6 import QtWidgets as _qw
+    from PySide6.QtCore import QTimer as _QTimer
 except Exception:  # noqa: BLE001 - PySide6 opcional durante headless/tests
     _qw = None
+    _QTimer = None
 
 if typing.TYPE_CHECKING:
     from PySide6 import QtWidgets as Qw  # noqa: F401
@@ -42,6 +44,7 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         self._build_top_bar()
         self._build_stems_area()
         self._build_playback_bar()
+        self._build_progress_bar()
         self.setCentralWidget(central)
         self._apply_language()
 
@@ -100,9 +103,9 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         stems_layout.addWidget(self._stems_list)
 
         # Botón para importar stems (diálogo de archivo, evita crashs de Qt con drag & drop)
-        btn_import = self._qw.QPushButton(self._tr("ui.import_hint"))
-        btn_import.clicked.connect(self._import_stems)
-        stems_layout.addWidget(btn_import)
+        self._btn_import = self._qw.QPushButton(self._tr("ui.import_hint"))
+        self._btn_import.clicked.connect(self._import_stems)
+        stems_layout.addWidget(self._btn_import)
 
         ql.addWidget(stems, 1)
 
@@ -117,10 +120,59 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         bottom_layout.addWidget(self._position)
         bottom_layout.addWidget(self._qw.QSlider())
         bottom_layout.addStretch()
+
+        self._volume_label = self._qw.QLabel("")
+        bottom_layout.addWidget(self._volume_label)
+        self._volume_slider = self._qw.QSlider()
+        self._volume_slider.setRange(-60, 12)
+        self._volume_slider.setValue(0)
+        self._volume_slider.setTickPosition(self._qw.QSlider.TickPosition.NoTicks)
+        self._volume_slider.valueChanged.connect(self._on_volume_changed)
+        bottom_layout.addWidget(self._volume_slider)
+        self._volume_db_label = self._qw.QLabel("0 dB")
+        self._volume_db_label.setMinimumWidth(50)
+        bottom_layout.addWidget(self._volume_db_label)
+
+        self._lufs_label = self._qw.QLabel("")
+        bottom_layout.addWidget(self._lufs_label)
+        self._lufs_value_label = self._qw.QLabel("-14.0 LUFS")
+        self._lufs_value_label.setMinimumWidth(80)
+        bottom_layout.addWidget(self._lufs_value_label)
+
+        self._truepeak_label = self._qw.QLabel("")
+        bottom_layout.addWidget(self._truepeak_label)
+        self._truepeak_value_label = self._qw.QLabel("-1.0 dB")
+        self._truepeak_value_label.setMinimumWidth(55)
+        bottom_layout.addWidget(self._truepeak_value_label)
+
         self._export_btn = self._add_button("")
         self._export_btn.clicked.connect(self._on_export)
         bottom_layout.addWidget(self._export_btn)
         ql.addWidget(bottom)
+
+    def _on_volume_changed(self, value: int) -> None:
+        self._volume_db_label.setText(f"{value} dB")
+        target = self._get_target_lufs()
+        approx_lufs = round(target + value, 1)
+        self._lufs_value_label.setText(f"{approx_lufs:.1f} LUFS")
+
+    def _get_target_lufs(self) -> float:
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            return -14.0
+        profile_svc = self._services.get("profile_service")
+        if profile_svc is None:
+            return -14.0
+        norm = profile_svc.normalization(ps.active_project.genre)
+        return norm.lufs if norm else -14.0
+
+    def _build_progress_bar(self) -> None:
+        self._progress_bar = self._qw.QProgressBar()
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat("%p%")
+        self._progress_bar.hide()
+        self._layout.addWidget(self._progress_bar)
 
     # --- helpers ---
 
@@ -129,6 +181,43 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
 
     def _mix_service(self):
         return self._services.get("mix_service")
+
+    def _worker_manager(self):
+        return self._services.get("worker_manager")
+
+    def _collect_interactive_widgets(self) -> list:
+        return [
+            self._mix_btn,
+            self._export_btn,
+            self._btn_import,
+            self._genre_combo,
+        ]
+
+    def _set_busy(self, label: str = "") -> None:
+        for w in self._collect_interactive_widgets():
+            w.setEnabled(False)
+        fmt = (label + " %p%") if label else "%p%"
+        self._progress_bar.setFormat(fmt)
+        self._progress_bar.setValue(0)
+        self._progress_bar.show()
+
+    def _set_idle(self) -> None:
+        self._progress_bar.hide()
+        self._progress_bar.setValue(0)
+        ps = self._project_service()
+        playback_enabled = ps.mix_enabled if ps and ps.active_project else False
+        self._mix_btn.setEnabled(playback_enabled)
+        self._export_btn.setEnabled(playback_enabled)
+        self._btn_import.setEnabled(True)
+        self._genre_combo.setEnabled(
+            ps is not None and ps.active_project is not None
+        )
+
+    def _update_progress(self, pct: int) -> None:
+        if _QTimer is not None:
+            _QTimer.singleShot(0, lambda p=pct: self._progress_bar.setValue(p))
+        else:
+            self._progress_bar.setValue(pct)
 
     def _update_project_name(self) -> None:
         ps = self._project_service()
@@ -363,7 +452,8 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         qw = self._qw
         ps = self._project_service()
         ms = self._mix_service()
-        if ps is None or ms is None:
+        wm = self._worker_manager()
+        if ps is None or ms is None or wm is None:
             return
         if ps.active_project is None:
             qw.QMessageBox.warning(
@@ -377,30 +467,51 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
                 self._tr("ui.import_hint")
             )
             return
-        res = ms.render_preview(ps.active_project)
-        if res.is_ok:
-            load_res = ms.load_preview()
-            if load_res.is_ok:
-                self._position.setText("0:00")
+
+        project = ps.active_project
+
+        def work(token, progress_cb):
+            return ms.render_preview(
+                project,
+                on_progress=progress_cb,
+                cancel=token.cancelled.__bool__,
+            )
+
+        def on_progress(pct):
+            self._update_progress(pct)
+
+        def on_done(result):
+            if result.is_ok:
+                load_res = ms.load_preview()
+                if load_res.is_ok:
+                    self._update_progress(100)
+                    self._set_idle()
+                    self._position.setText("0:00")
+                else:
+                    self._set_idle()
+                    qw.QMessageBox.warning(
+                        self, self._tr("ui.preferences"),
+                        self._tr("job.failed")
+                    )
             else:
+                self._set_idle()
+                msg = getattr(
+                    getattr(result, "error", None), "message", str(result)
+                )
                 qw.QMessageBox.warning(
                     self, self._tr("ui.preferences"),
-                    self._tr("job.failed")
+                    msg or self._tr("job.failed")
                 )
-        else:
-            msg = getattr(
-                getattr(res, "error", None), "message", str(res)
-            )
-            qw.QMessageBox.warning(
-                self, self._tr("ui.preferences"),
-                msg or self._tr("job.failed")
-            )
+
+        self._set_busy(self._tr("ui.mix"))
+        wm.start(work, on_progress=on_progress, on_done=on_done)
 
     def _on_export(self) -> None:
         qw = self._qw
         ps = self._project_service()
         ms = self._mix_service()
-        if ps is None or ms is None:
+        wm = self._worker_manager()
+        if ps is None or ms is None or wm is None:
             return
         if ps.active_project is None:
             qw.QMessageBox.warning(
@@ -428,15 +539,35 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         export_fmt = (
             ExportFormat.WAV_44100_24 if fmt == "wav" else ExportFormat.MP3_320
         )
-        res = ms.export(ps.active_project, path, export_fmt)
-        if not res.is_ok:
-            msg = getattr(
-                getattr(res, "error", None), "message", str(res)
+
+        project = ps.active_project
+
+        def work(token, progress_cb):
+            return ms.export(
+                project, path, export_fmt,
+                on_progress=progress_cb,
+                cancel=token.cancelled.__bool__,
             )
-            qw.QMessageBox.warning(
-                self, self._tr("ui.preferences"),
-                msg or self._tr("export.failed")
-            )
+
+        def on_progress(pct):
+            self._update_progress(pct)
+
+        def on_done(result):
+            if result.is_ok:
+                self._update_progress(100)
+                self._set_idle()
+            else:
+                self._set_idle()
+                msg = getattr(
+                    getattr(result, "error", None), "message", str(result)
+                )
+                qw.QMessageBox.warning(
+                    self, self._tr("ui.preferences"),
+                    msg or self._tr("export.failed")
+                )
+
+        self._set_busy(self._tr("ui.export"))
+        wm.start(work, on_progress=on_progress, on_done=on_done)
 
     # --- idioma (SPEC010 AC-05, U8) ---
 
@@ -466,6 +597,10 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         self._mix_btn.setText(t("ui.mix"))
         self._position.setText("0:00")
         self._export_btn.setText(t("ui.export"))
+        self._volume_label.setText(t("ui.volume") + ":")
+        self._lufs_label.setText(t("ui.lufs") + ":")
+        self._truepeak_label.setText(t("ui.true_peak") + ":")
+        self._on_volume_changed(self._volume_slider.value())
 
     def _open_preferences(self) -> None:
         """Diálogo Preferencias (U8): selector de idioma que persiste (AC-05).
