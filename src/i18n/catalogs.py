@@ -51,6 +51,9 @@ ES = {
     "ui.stem_file": "Archivo",
     "ui.stem_volume": "Volumen",
     "ui.stem_action": "Acción",
+    "ui.genre_pop": "Pop",
+    "ui.genre_rock": "Rock",
+    "ui.genre_hip_hop": "Hip Hop",
 }
 
 EN = {
@@ -101,6 +104,9 @@ EN = {
     "ui.stem_file": "File",
     "ui.stem_volume": "Volume",
     "ui.stem_action": "Action",
+    "ui.genre_pop": "Pop",
+    "ui.genre_rock": "Rock",
+    "ui.genre_hip_hop": "Hip Hop",
 }
 
 _CATALOGS = {"es": ES, "en": EN}

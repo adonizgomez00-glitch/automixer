@@ -75,6 +75,15 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
 
         top_layout.addStretch()
 
+        self._genre_label = self._qw.QLabel("")
+        top_layout.addWidget(self._genre_label)
+        self._genre_combo = self._qw.QComboBox()
+        self._genre_combo.addItem("Pop", "pop")
+        self._genre_combo.addItem("Rock", "rock")
+        self._genre_combo.addItem("Hip Hop", "hip_hop")
+        self._genre_combo.currentIndexChanged.connect(self._on_genre_changed)
+        top_layout.addWidget(self._genre_combo)
+
         btn_prefs = self._add_button("", with_save=True)
         top_layout.addWidget(btn_prefs)
 
@@ -134,6 +143,39 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
                 f"{self._tr('ui.project_name')}: {proj.name}"
             )
 
+    def _sync_genre(self) -> None:
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            self._genre_combo.setEnabled(False)
+            return
+        self._genre_combo.setEnabled(True)
+        genre = ps.active_project.genre
+        self._genre_combo.blockSignals(True)
+        idx = self._genre_combo.findData(genre.value)
+        if idx >= 0:
+            self._genre_combo.setCurrentIndex(idx)
+        self._genre_combo.blockSignals(False)
+
+    def _on_genre_changed(self, index: int) -> None:
+        qw = self._qw
+        ps = self._project_service()
+        if ps is None or ps.active_project is None:
+            return
+        genre_value = self._genre_combo.currentData()
+        if not genre_value:
+            return
+        from ..models.project import Genre
+        genre_map = {g.value: g for g in Genre}
+        genre = genre_map.get(genre_value)
+        if genre is None:
+            return
+        res = ps.change_genre(genre)
+        if not res.is_ok:
+            qw.QMessageBox.warning(
+                self, self._tr("ui.preferences"),
+                self._tr("project.not_open")
+            )
+
     def _enable_playback_controls(self, enabled: bool) -> None:
         self._mix_btn.setEnabled(enabled)
         self._export_btn.setEnabled(enabled)
@@ -187,6 +229,7 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
             res = ps.create(name, folder)
             if res.is_ok:
                 self._update_project_name()
+                self._sync_genre()
                 self._refresh_stems_list()
                 self._enable_playback_controls(ps.mix_enabled)
                 dlg.accept()
@@ -213,6 +256,7 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
         res = ps.open(path)
         if res.is_ok:
             self._update_project_name()
+            self._sync_genre()
             self._refresh_stems_list()
             self._enable_playback_controls(ps.mix_enabled)
         else:
@@ -410,6 +454,15 @@ class MainWindow(_qw.QMainWindow if _qw else object):  # type: ignore[misc]
             btn.setText(labels[i])
         buttons[3].setText(t("ui.preferences"))
         self._hint.setText(t("ui.import_hint"))
+        self._genre_label.setText(t("ui.genre") + ":")
+        self._genre_combo.blockSignals(True)
+        genre_labels = [t("ui.genre_pop"), t("ui.genre_rock"), t("ui.genre_hip_hop")]
+        genre_values = ["pop", "rock", "hip_hop"]
+        self._genre_combo.clear()
+        for label, value in zip(genre_labels, genre_values):
+            self._genre_combo.addItem(label, value)
+        self._genre_combo.blockSignals(False)
+        self._sync_genre()
         self._mix_btn.setText(t("ui.mix"))
         self._position.setText("0:00")
         self._export_btn.setText(t("ui.export"))
