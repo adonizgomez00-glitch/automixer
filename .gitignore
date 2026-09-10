@@ -1,9 +1,9 @@
 .venv/
 dist/
-.venv/
 __pycache__/
 *.py[cod]
 *.so
 .env
-.venv/
 venv/
+settings.json
+*.egg-info/

@@ -1,34 +1,71 @@
 # AutoMixer
 
-Aplicación de escritorio para mezclar stems de canciones de forma local y sencilla. Importa pistas individuales (voz, batería, bajo, guitarra, etc.), clasifícalas manualmente, aplica un perfil de mezcla por género y exporta el resultado final.
+Aplicación de escritorio para mezclar stems de canciones de forma local y sencilla. Importa pistas individuales (voz, batería, bajo, guitarra, etc.), clasifícalas automáticamente desde el nombre del archivo, aplica un perfil de mezcla por género y exporta el resultado final.
 
 ## Características
 
-- **Importación por drag & drop** de stems en formato MP3, FLAC y WAV.
-- **Clasificación manual** de stems en 9 tipos: voz, batería, bajo, guitarra, teclados, sintetizadores, drops, efectos y Otro (perfil neutro).
-- **Perfiles de mezcla** para Pop (predeterminado), Rock e Hip Hop, con ganancia, paneo, EQ, compresión y normalización LUFS automáticos por género/tipo.
+- **Auto-detección de tipo** desde el nombre del archivo (`_drums` → Batería, `_vocals` → Voz, `_bass` → Bajo, etc.).
+- **Importación** de stems en formato MP3, FLAC y WAV.
+- **Perfiles de mezcla** para Pop (predeterminado), Rock e Hip Hop, con ganancia, paneo, HPF, EQ, compresión y normalización LUFS automáticos por género/tipo.
 - **Control manual** de volumen por stem (−60 a +12 dB) y desfase manual en milisegundos.
-- **Sincronización de tempo** automática con referencia a batería (o primer stem), con umbrales de confianza.
-- **Vista previa** con reproductor (reproducir/pausar/detener/posición/volumen) usando WAV temporal.
-- **Exportación** a WAV 44.1 kHz/24-bit o MP3 320 kbps, con confirmación de sobrescritura.
+- **Barra de progreso** durante Mezclar y Exportar con bloqueo de la interfaz.
+- **Vista previa** con reproductor (reproducir/pausar/detener) usando WAV temporal.
+- **Exportación** a WAV 44.1 kHz/24-bit o MP3 320 kbps.
 - **Interfaz bilingüe** español/inglés con selector de idioma persistente.
 - **Proyectos locales** guardados en formato `.automixer` (JSON versionado) — nunca modifica los archivos originales.
 
-## Requisitos
+## Instalación automática (recomendada)
 
-- Python >= 3.10
-- FFmpeg disponible en el PATH (o incluido en el bundle empaquetado)
+Los instaladores configuran todo automáticamente: Python, FFmpeg, dependencias y accesos directos.
 
-## Instalación
+### Windows
+
+1. Descarga o clona el repositorio
+2. Haz doble clic en **`setup.bat`**
+3. El instalador hará todo solo:
+   - Instala Python 3.12 si no lo encuentra (via winget)
+   - Instala FFmpeg si no lo encuentra (via winget o descarga directa)
+   - Crea entorno virtual e instala PySide6
+   - Crea un acceso directo en el escritorio
+4. Al terminar, ejecuta AutoMixer desde el escritorio o con `python -m src.app`
+
+### Linux (Ubuntu, Fedora, Arch, openSUSE)
 
 ```bash
 # Clonar el repositorio
 git clone <url-del-repositorio>
 cd automixer
 
-# Crear entorno virtual e instalar dependencias
-python -m venv .venv
+# Ejecutar el instalador
+chmod +x setup.sh
+./setup.sh
+```
+
+El instalador hará todo solo:
+- Instala Python 3 si no lo encuentra (via apt/dnf/pacman)
+- Instala FFmpeg si no lo encuentra
+- Instala prerrequisitos de PySide6 (libgl1, mesa)
+- Crea entorno virtual e instala dependencias
+- Crea un lanzador en el menú de aplicaciones
+- Al terminar, ejecuta AutoMixer desde el menú o con `./automixer.sh`
+
+## Instalación manual
+
+Si prefieres instalar paso a paso:
+
+```bash
+# Clonar
+git clone <url-del-repositorio>
+cd automixer
+
+# Python 3.10+ y FFmpeg deben estar instalados
+
+# Crear entorno virtual
+python3 -m venv .venv
 source .venv/bin/activate   # Linux/macOS
+# .venv\Scripts\activate    # Windows
+
+# Instalar dependencias
 pip install -e .
 ```
 
@@ -38,11 +75,10 @@ pip install -e .
 python -m src.app
 ```
 
-O mediante el script definido en `pyproject.toml`:
+O con el lanzador generado por el instalador:
 
-```bash
-automixer
-```
+- **Linux**: `./automixer.sh` o busca "AutoMixer" en el menú de aplicaciones
+- **Windows**: doble clic en "AutoMixer" en el escritorio
 
 ## Empaquetado
 
@@ -53,12 +89,6 @@ pip install pyinstaller
 python scripts/build.py
 ```
 
-Opcionalmente, especifica la carpeta de FFmpeg:
-
-```bash
-python scripts/build.py --ffmpeg-dir /ruta/a/ffmpeg
-```
-
 El bundle se genera en `dist/automixer/` e incluye FFmpeg y `LICENSES.md`.
 
 ## Arquitectura
@@ -66,16 +96,15 @@ El bundle se genera en `dist/automixer/` e incluye FFmpeg y `LICENSES.md`.
 ```
 src/
   app.py                 # composición de dependencias
-  models/                # MixProject, Stem, MixProfile, ExportSettings
-  views/                 # ventana, lista de stems, reproductor, diálogos
-  controllers/           # eventos de la UI y actualización de la vista
-  services/              # proyecto, mezcla, exportación, alineación, ajustes
-  ports/                 # contratos de audio, reproducción y persistencia
-  repositories/          # JSON de proyecto y QSettings
-  adapters/              # FFmpeg, QtMultimedia, sistema de archivos
-  workers/               # trabajos cancelables y señales de progreso
+  models/                # MixProject, Stem, MixProfile
+  views/                 # ventana, lista de stems, reproductor
+  controllers/           # eventos de la UI
+  services/              # proyecto, mezcla, exportación, i18n
+  ports/                 # contratos de audio y persistencia
+  adapters/              # FFmpeg, QtMultimedia
+  workers/               # trabajos cancelables en segundo plano
   i18n/                  # catálogos de idioma (es/en)
-  utils/                 # Result, validación y errores
+  utils/                 # Result, validación, auto-detección
 ```
 
 Patrón: **View → Controller → Service → Port → Adapter**. Inyección de dependencias manual en `app.py`.
@@ -92,15 +121,15 @@ Patrón: **View → Controller → Service → Port → Adapter**. Inyección de
 
 | Tipo | Perfil |
 |------|--------|
-| Voz | Gain, paneo, EQ, compresión según género |
-| Batería | Ganancia base, referencia de tempo |
-| Bajo | Paneo alternado, HPF |
-| Guitarra | Paneo alternado, EQ |
-| Teclados | Paneo, EQ |
-| Sintetizadores | Paneo, compresión |
-| Drops | Ganancia, compresión |
-| Efectos | Paneo, ganancia |
-| Otro | Perfil neutro (sin procesamiento automático) |
+| Voz | HPF, EQ, compresión según género |
+| Batería | Ganancia base, EQ, compresión, referencia de tempo |
+| Bajo | HPF, EQ, compresión |
+| Guitarra | Paneo alternado, HPF, EQ |
+| Teclados | Paneo, HPF, EQ |
+| Sintetizadores | Paneo, HPF, EQ |
+| Drops | Ganancia, HPF, EQ |
+| Efectos | Paneo, ganancia, HPF, EQ |
+| Otro | Perfil neutro (sin procesamiento) |
 
 ## Licencia
 
